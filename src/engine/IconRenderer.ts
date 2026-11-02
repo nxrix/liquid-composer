@@ -399,21 +399,12 @@ function opaqueCss(hex: string): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-/**
- * After an opaque source-atop recolor, scale RGB by fill alpha but keep the art's alpha.
- * Thinning alpha would break the SDF silhouette (specular, dark rims). Scaling RGB
- * dims the color toward black instead of blending toward the SVG's white.
- */
-function applyFillAlpha(ctx: CanvasRenderingContext2D, size: number, alpha: number) {
-  if (alpha >= 1) return;
-  const img = ctx.getImageData(0, 0, size, size);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    d[i]     = Math.round(d[i] * alpha);
-    d[i + 1] = Math.round(d[i + 1] * alpha);
-    d[i + 2] = Math.round(d[i + 2] * alpha);
-  }
-  ctx.putImageData(img, 0, 0);
+/** 0–1 opacity from a solid/gradient fill's alpha channel (default 1). */
+function fillOpacityOf(fill: Layer['fill']): number {
+  if (fill.type === 'solid') return parseHexAlpha(fill.color ?? '#ffffff').a;
+  if (fill.type === 'gradient' && 'stops' in fill && fill.stops.length)
+    return Math.min(...fill.stops.map((s) => parseHexAlpha(s.color).a));
+  return 1;
 }
 
 function drawLayerBevel(
@@ -682,28 +673,23 @@ async function buildContentCanvas(
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, x, y, w, h);
 
-      // Recolor with opaque RGB, then apply fill alpha separately.
-      // source-atop + semi-transparent fill would blend toward the SVG's own color (often white).
+      // Recolor with opaque RGB only. Fill alpha is applied later as layer opacity
+      // so SDF / specular / refraction keep a solid silhouette.
       ctx.globalCompositeOperation = 'source-atop';
-      let fillAlpha = 1;
       if (adaptBg && (layer.fill.type === 'none'
         ? /\.svg$/i.test(layer.sourceFile ?? '') && isLightArt(img, layer.blobUrl)
         : isLightFill(layer.fill))) {
         ctx.drawImage(adaptBg, 0, 0, size, size);
       } else if (layer.fill.type === 'solid') {
-        const color = layer.fill.color ?? '#ffffff';
-        fillAlpha = parseHexAlpha(color).a;
-        ctx.fillStyle = opaqueCss(color);
+        ctx.fillStyle = opaqueCss(layer.fill.color ?? '#ffffff');
         ctx.fillRect(0, 0, size, size);
       } else if (layer.fill.type === 'gradient' && 'stops' in layer.fill) {
         const grad = ctx.createLinearGradient(0, 0, 0, size);
         layer.fill.stops.forEach((s) => grad.addColorStop(s.offset, opaqueCss(s.color)));
-        fillAlpha = Math.min(...layer.fill.stops.map((s) => parseHexAlpha(s.color).a));
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, size, size);
       }
       ctx.globalCompositeOperation = 'source-over';
-      applyFillAlpha(ctx, size, fillAlpha);
     } catch { }
   } else {
     ctx.clip(squirclePath(size));
@@ -960,6 +946,7 @@ async function renderIconToCanvasImpl(
 
       for (const child of children) {
         const childFeedBg = child.liquidGlass?.enabled ? runningBg : glassBgCanvas;
+        const childOp = (child.opacity / 100) * fillOpacityOf(child.fill);
         const lc = await renderLayerToCanvas(
           child,
           size,
@@ -970,13 +957,13 @@ async function renderIconToCanvasImpl(
           childFeedBg,
           scratch,
           renderer,
-          (child.opacity / 100) * (layer.opacity / 100),
+          childOp * (layer.opacity / 100),
           paintIndex++ === 0 ? glassBgKey : '',
         );
         if (lc) {
           if (lc.shadow) {
             const { canvas: shadow, alpha, x, y, w } = lc.shadow;
-            const a = alpha * (child.opacity / 100);
+            const a = alpha * childOp;
             composite(c, shadow, a * (layer.opacity / 100), 'multiply', x, y, w, w);
             composite(rbCtx, shadow, a * (layer.opacity / 100), 'multiply', x, y, w, w);
             const { canvas: siblings, ctx: sc } = getScratchCanvas('group-shadow', size);
@@ -985,17 +972,18 @@ async function renderIconToCanvasImpl(
             sc.drawImage(groupCanvas, 0, 0);
             composite(gc, siblings, a, 'multiply');
           }
-          composite(gc, lc.canvas, child.opacity / 100, child.blendMode);
-          composite(rbCtx, lc.canvas, (child.opacity / 100) * (layer.opacity / 100), layer.blendMode === 'normal' ? child.blendMode : layer.blendMode);
+          composite(gc, lc.canvas, childOp, child.blendMode);
+          composite(rbCtx, lc.canvas, childOp * (layer.opacity / 100), layer.blendMode === 'normal' ? child.blendMode : layer.blendMode);
           if (lc.over) {
-            composite(gc, lc.over.canvas, lc.over.alpha * (child.opacity / 100), 'multiply');
-            composite(rbCtx, lc.over.canvas, lc.over.alpha * (child.opacity / 100) * (layer.opacity / 100), 'multiply');
+            composite(gc, lc.over.canvas, lc.over.alpha * childOp, 'multiply');
+            composite(rbCtx, lc.over.canvas, lc.over.alpha * childOp * (layer.opacity / 100), 'multiply');
           }
         }
       }
 
       composite(c, groupCanvas, layer.opacity / 100, layer.blendMode);
     } else {
+      const layerOp = (layer.opacity / 100) * fillOpacityOf(layer.fill);
       const lc = await renderLayerToCanvas(
         layer,
         size,
@@ -1006,20 +994,20 @@ async function renderIconToCanvasImpl(
         feedBg,
         scratch,
         renderer,
-        layer.opacity / 100,
+        layerOp,
         paintIndex++ === 0 ? glassBgKey : '',
       );
       if (lc) {
         if (lc.shadow) {
           const { canvas: shadow, alpha, x, y, w } = lc.shadow;
-          composite(c, shadow, alpha * (layer.opacity / 100), 'multiply', x, y, w, w);
-          composite(rbCtx, shadow, alpha * (layer.opacity / 100), 'multiply', x, y, w, w);
+          composite(c, shadow, alpha * layerOp, 'multiply', x, y, w, w);
+          composite(rbCtx, shadow, alpha * layerOp, 'multiply', x, y, w, w);
         }
-        composite(c, lc.canvas, layer.opacity / 100, layer.blendMode);
-        composite(rbCtx, lc.canvas, layer.opacity / 100, layer.blendMode);
+        composite(c, lc.canvas, layerOp, layer.blendMode);
+        composite(rbCtx, lc.canvas, layerOp, layer.blendMode);
         if (lc.over) {
-          composite(c, lc.over.canvas, lc.over.alpha * (layer.opacity / 100), 'multiply');
-          composite(rbCtx, lc.over.canvas, lc.over.alpha * (layer.opacity / 100), 'multiply');
+          composite(c, lc.over.canvas, lc.over.alpha * layerOp, 'multiply');
+          composite(rbCtx, lc.over.canvas, lc.over.alpha * layerOp, 'multiply');
         }
       }
     }
