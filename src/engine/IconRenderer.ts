@@ -371,7 +371,7 @@ function isLightArt(img: HTMLImageElement, key: string): boolean {
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
-  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})?$/i.exec(hex);
   return match
     ? {
         r: parseInt(match[1], 16),
