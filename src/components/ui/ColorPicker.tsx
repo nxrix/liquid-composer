@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { HexColorPicker } from 'react-colorful';
+import { HexAlphaColorPicker } from 'react-colorful';
 import { Popover } from './Popover';
 
 // ── Apple system colors, light variant (iOS / macOS 26) ──
@@ -19,7 +19,7 @@ const SYSTEM_COLORS = [
   { hex: '#8E8E93', label: 'Gray' },
 ];
 
-const HEX_RE = /^#[0-9a-f]{6}$/i;
+const HEX_RE = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i;
 const RECENT_KEY = 'liquid-composer-recent-colors';
 const RECENT_LIMIT = 8;
 
@@ -103,14 +103,14 @@ export function ColorPicker({ value, onChange, label, className = 'color-well', 
       {open && (
         <Popover anchor={buttonRef.current} onClose={close} role="dialog" aria-label={label} className="color-popover">
           <div ref={bodyRef}>
-            <HexColorPicker color={draft} onChange={apply} />
+            <HexAlphaColorPicker color={draft} onChange={apply} />
             <label className="color-hex-field">
               <span aria-hidden="true">#</span>
               <input
                 type="text"
                 aria-label={`${label} hex`}
                 value={hexText}
-                maxLength={7}
+                maxLength={8}
                 spellCheck={false}
                 autoComplete="off"
                 onChange={(e) => {
