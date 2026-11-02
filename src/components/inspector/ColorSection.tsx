@@ -40,7 +40,7 @@ const FILL_TYPES = [
   { value: 'gradient', label: 'Gradient' },
 ];
 
-const HEX_RE = /^#[0-9a-f]{6}$/i;
+const HEX_RE = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i;
 
 export function ColorSection() {
   const selectedId = useStore($selectedLayerId);
