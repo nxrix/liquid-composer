@@ -399,14 +399,6 @@ function opaqueCss(hex: string): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-/** 0–1 opacity from a solid/gradient fill's alpha channel (default 1). */
-function fillOpacityOf(fill: Layer['fill']): number {
-  if (fill.type === 'solid') return parseHexAlpha(fill.color ?? '#ffffff').a;
-  if (fill.type === 'gradient' && 'stops' in fill && fill.stops.length)
-    return Math.min(...fill.stops.map((s) => parseHexAlpha(s.color).a));
-  return 1;
-}
-
 function drawLayerBevel(
   outCtx: CanvasRenderingContext2D,
   contentCanvas: HTMLCanvasElement,
@@ -946,7 +938,7 @@ async function renderIconToCanvasImpl(
 
       for (const child of children) {
         const childFeedBg = child.liquidGlass?.enabled ? runningBg : glassBgCanvas;
-        const childOp = (child.opacity / 100) * fillOpacityOf(child.fill);
+        const childOp = child.opacity / 100;
         const lc = await renderLayerToCanvas(
           child,
           size,
@@ -983,7 +975,7 @@ async function renderIconToCanvasImpl(
 
       composite(c, groupCanvas, layer.opacity / 100, layer.blendMode);
     } else {
-      const layerOp = (layer.opacity / 100) * fillOpacityOf(layer.fill);
+      const layerOp = layer.opacity / 100;
       const lc = await renderLayerToCanvas(
         layer,
         size,
