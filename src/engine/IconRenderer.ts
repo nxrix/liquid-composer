@@ -399,13 +399,21 @@ function opaqueCss(hex: string): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-/** Multiply the current canvas alpha by `alpha` (fill opacity after an opaque recolor). */
+/**
+ * After an opaque source-atop recolor, scale RGB by fill alpha but keep the art's alpha.
+ * Thinning alpha would break the SDF silhouette (specular, dark rims). Scaling RGB
+ * dims the color toward black instead of blending toward the SVG's white.
+ */
 function applyFillAlpha(ctx: CanvasRenderingContext2D, size: number, alpha: number) {
   if (alpha >= 1) return;
-  ctx.globalCompositeOperation = 'destination-in';
-  ctx.fillStyle = `rgba(0,0,0,${alpha})`;
-  ctx.fillRect(0, 0, size, size);
-  ctx.globalCompositeOperation = 'source-over';
+  const img = ctx.getImageData(0, 0, size, size);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    d[i]     = Math.round(d[i] * alpha);
+    d[i + 1] = Math.round(d[i + 1] * alpha);
+    d[i + 2] = Math.round(d[i + 2] * alpha);
+  }
+  ctx.putImageData(img, 0, 0);
 }
 
 function drawLayerBevel(
