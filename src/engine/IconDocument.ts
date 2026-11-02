@@ -73,7 +73,11 @@ function fromIconColor(value: unknown): string | null {
   const c = list.split(',').map(Number);
   const rgb = space.endsWith('gray') ? [c[0], c[0], c[0]] : c.slice(0, 3);
   if (rgb.length < 3 || rgb.some((n) => !Number.isFinite(n))) return null;
-  return `#${rgb.map((n) => Math.round(clamp(n, 0, 1) * 255).toString(16).padStart(2, '0')).join('')}`;
+  const hex = `#${rgb.map((n) => Math.round(clamp(n, 0, 1) * 255).toString(16).padStart(2, '0')).join('')}`;
+  // keep the 4th component (alpha) when present
+  return c.length > 3 && Number.isFinite(c[3])
+    ? hex + Math.round(clamp(c[3], 0, 1) * 255).toString(16).padStart(2, '0')
+    : hex;
 }
 
 // ── Fill ──
