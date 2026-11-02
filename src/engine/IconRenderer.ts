@@ -381,6 +381,33 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
     : null;
 }
 
+/** Parse #rgb / #rrggbb / #rrggbbaa → 0–255 channels + 0–1 alpha. */
+function parseHexAlpha(hex: string): { r: number; g: number; b: number; a: number } {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})?$/i.exec(hex.trim());
+  if (!m) return { r: 255, g: 255, b: 255, a: 1 };
+  return {
+    r: parseInt(m[1], 16),
+    g: parseInt(m[2], 16),
+    b: parseInt(m[3], 16),
+    a: m[4] ? parseInt(m[4], 16) / 255 : 1,
+  };
+}
+
+/** RGB only — used for source-atop recolor so alpha does not blend with white SVG art. */
+function opaqueCss(hex: string): string {
+  const { r, g, b } = parseHexAlpha(hex);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/** Multiply the current canvas alpha by `alpha` (fill opacity after an opaque recolor). */
+function applyFillAlpha(ctx: CanvasRenderingContext2D, size: number, alpha: number) {
+  if (alpha >= 1) return;
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = 'source-over';
+}
+
 function drawLayerBevel(
   outCtx: CanvasRenderingContext2D,
   contentCanvas: HTMLCanvasElement,
@@ -647,21 +674,28 @@ async function buildContentCanvas(
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, x, y, w, h);
 
+      // Recolor with opaque RGB, then apply fill alpha separately.
+      // source-atop + semi-transparent fill would blend toward the SVG's own color (often white).
       ctx.globalCompositeOperation = 'source-atop';
+      let fillAlpha = 1;
       if (adaptBg && (layer.fill.type === 'none'
         ? /\.svg$/i.test(layer.sourceFile ?? '') && isLightArt(img, layer.blobUrl)
         : isLightFill(layer.fill))) {
         ctx.drawImage(adaptBg, 0, 0, size, size);
       } else if (layer.fill.type === 'solid') {
-        ctx.fillStyle = layer.fill.color ?? '#ffffff';
+        const color = layer.fill.color ?? '#ffffff';
+        fillAlpha = parseHexAlpha(color).a;
+        ctx.fillStyle = opaqueCss(color);
         ctx.fillRect(0, 0, size, size);
       } else if (layer.fill.type === 'gradient' && 'stops' in layer.fill) {
         const grad = ctx.createLinearGradient(0, 0, 0, size);
-        layer.fill.stops.forEach((s) => grad.addColorStop(s.offset, s.color));
+        layer.fill.stops.forEach((s) => grad.addColorStop(s.offset, opaqueCss(s.color)));
+        fillAlpha = Math.min(...layer.fill.stops.map((s) => parseHexAlpha(s.color).a));
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, size, size);
       }
       ctx.globalCompositeOperation = 'source-over';
+      applyFillAlpha(ctx, size, fillAlpha);
     } catch { }
   } else {
     ctx.clip(squirclePath(size));
