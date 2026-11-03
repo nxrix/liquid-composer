@@ -141,10 +141,13 @@ export interface UIState {
   appearanceMode: AppearanceMode;
 }
 
+export type PlateShape = 'squircle' | 'circle';
+
 export interface RenderContext {
   layers: Layer[];
   background: BackgroundConfig;
   lightAngle: number;
   appearanceMode: AppearanceMode;
   size: number;
+  shape?: PlateShape;  // default squircle
 }
