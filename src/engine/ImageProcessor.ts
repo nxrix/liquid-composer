@@ -54,6 +54,26 @@ export function squirclePath(size: number): Path2D {
   return path;
 }
 
+const circleCache = new Map<number, Path2D>();
+
+export function circlePath(size: number): Path2D {
+  let path = circleCache.get(size);
+  if (!path) {
+    path = new Path2D();
+    path.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    path.closePath();
+    circleCache.set(size, path);
+    if (circleCache.size > 12) circleCache.delete(circleCache.keys().next().value!);
+  }
+  return path;
+}
+
+export type PlateShape = 'squircle' | 'circle';
+
+export function platePath(shape: PlateShape, size: number): Path2D {
+  return shape === 'circle' ? circlePath(size) : squirclePath(size);
+}
+
 export function createBackgroundCanvas(
   config: { type: string; bgType?: 'preset' | 'custom'; stops?: { offset: number; color: string }[]; colors?: [string, string]; color?: string; angle?: number },
   width: number,
